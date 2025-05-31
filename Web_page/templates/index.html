@@ -26,6 +26,10 @@
         .animate-pulse-red {
             animation: pulse-red 1.5s infinite;
         }
+        /* Water fill animation */
+        .water-fill {
+            transition: opacity 0.5s ease-out; /* Smooth transition for water levels */
+        }
     </style>
 </head>
 <body class="flex items-center justify-center min-h-screen p-4">
@@ -37,9 +41,16 @@
             <span id="statusText">Checking connection...</span>
         </div>
 
-        <div class="mb-8 p-6 bg-blue-100 rounded-lg shadow-inner">
-            <p class="text-lg text-gray-600 mb-2">Current Water Level:</p>
-            <p id="waterLevelDisplay" class="text-6xl font-extrabold text-blue-600 animate-pulse">
+        <div class="relative w-48 h-64 border-4 border-gray-400 rounded-xl overflow-hidden bg-gray-100 mx-auto mb-8">
+            <div id="waterLevel4" class="absolute bottom-0 left-0 w-full h-1/4 bg-blue-500 water-fill opacity-0"></div>
+            <div id="waterLevel3" class="absolute bottom-1/4 left-0 w-full h-1/4 bg-blue-500 water-fill opacity-0"></div>
+            <div id="waterLevel2" class="absolute bottom-2/4 left-0 w-full h-1/4 bg-blue-500 water-fill opacity-0"></div>
+            <div id="waterLevel1" class="absolute bottom-3/4 left-0 w-full h-1/4 bg-blue-500 water-fill opacity-0"></div>
+        </div>
+
+        <div class="mb-8 p-4 bg-blue-50 rounded-lg shadow-inner">
+            <p class="text-lg text-gray-600 mb-2">Current Water Level (Raw):</p>
+            <p id="waterLevelDisplay" class="text-4xl font-extrabold text-blue-600">
                 Loading...
             </p>
             <p class="text-sm text-gray-500 mt-2">(Last updated: <span id="lastUpdated">Never</span>)</p>
@@ -48,14 +59,19 @@
         <p class="text-sm text-gray-500">
             This page automatically updates the water level received from your NodeMCU device.
         </p>
-        <p class="text-sm text-gray-500">
-            By - Abhijeet Mishra
-        </p>
     </div>
 
     <script>
         // Define a threshold for considering the NodeMCU disconnected (e.g., 15 seconds without an update)
         const DISCONNECT_THRESHOLD_SECONDS = 15;
+
+        // Get all water level elements for the tank (reversed for bottom-up filling logic)
+        const waterTankLevels = [
+            document.getElementById('waterLevel1'),
+            document.getElementById('waterLevel2'),
+            document.getElementById('waterLevel3'),
+            document.getElementById('waterLevel4')
+        ].reverse(); // waterTankLevels[0] is bottom-most, waterTankLevels[3] is top-most
 
         // Function to fetch and update the water level and connection status
         async function fetchWaterLevel() {
@@ -71,15 +87,37 @@
                 const statusDot = document.getElementById('statusDot');
                 const statusText = document.getElementById('statusText');
 
-                // Update water level display
+                // Update numerical water level display
                 if (data.water_level !== undefined) {
                     waterLevelDisplay.textContent = data.water_level;
-                    waterLevelDisplay.classList.remove('animate-pulse');
-                    waterLevelDisplay.classList.add('text-blue-700');
+                    // Assuming NodeMCU sends a numerical value (0-100) for water level
+                    const levelValue = parseFloat(data.water_level);
+
+                    // Determine how many visual levels to fill based on the water level percentage
+                    let levelsToFill = 0;
+                    if (levelValue > 75) {
+                        levelsToFill = 4;
+                    } else if (levelValue > 50) {
+                        levelsToFill = 3;
+                    } else if (levelValue > 25) {
+                        levelsToFill = 2;
+                    } else if (levelValue > 0) {
+                        levelsToFill = 1;
+                    }
+
+                    // Update the visual tank levels
+                    waterTankLevels.forEach((levelDiv, index) => {
+                        if (index < levelsToFill) {
+                            levelDiv.classList.add('opacity-100'); // Fill the level
+                        } else {
+                            levelDiv.classList.remove('opacity-100'); // Empty the level
+                        }
+                    });
+
                 } else {
                     waterLevelDisplay.textContent = "Error fetching data";
-                    waterLevelDisplay.classList.remove('animate-pulse');
-                    waterLevelDisplay.classList.add('text-red-500');
+                    // Clear all water levels if data is erroneous
+                    waterTankLevels.forEach(levelDiv => levelDiv.classList.remove('opacity-100'));
                 }
 
                 // Update connection status
@@ -121,8 +159,8 @@
                 const statusText = document.getElementById('statusText');
 
                 waterLevelDisplay.textContent = "Connection Error";
-                waterLevelDisplay.classList.remove('animate-pulse');
-                waterLevelDisplay.classList.add('text-red-500');
+                // Clear all water levels on connection error
+                waterTankLevels.forEach(levelDiv => levelDiv.classList.remove('opacity-100'));
 
                 // Indicate web server connection issue
                 connectionStatusDiv.classList.remove('bg-green-400', 'bg-red-400', 'animate-pulse-green', 'animate-pulse-red');
