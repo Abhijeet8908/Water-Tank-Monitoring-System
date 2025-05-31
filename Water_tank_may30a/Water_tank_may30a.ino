@@ -55,6 +55,7 @@ void connectToWiFi() {
 
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("\nWiFi connected!");
+    Serial.printf("%s",ssid);
     Serial.print("NodeMCU IP Address: ");
     Serial.println(WiFi.localIP());
   } else {
@@ -71,7 +72,6 @@ void checkForResetCommand() {
     url += ":";
     url += flaskServerPort;
     url += "/get_nodemcu_command"; // New endpoint for NodeMCU to poll
-    Serial.printf("%s",url);
 
     WiFiClient wifiClient;
 
