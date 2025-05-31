@@ -11,11 +11,31 @@
             font-family: 'Inter', sans-serif;
             background-color: #f0f4f8; /* Light blue-gray background */
         }
+        /* Custom animation for connection status */
+        @keyframes pulse-green {
+            0%, 100% { background-color: #34D399; } /* Tailwind green-400 */
+            50% { background-color: #10B981; } /* Tailwind green-500 */
+        }
+        @keyframes pulse-red {
+            0%, 100% { background-color: #F87171; } /* Tailwind red-400 */
+            50% { background-color: #EF4444; } /* Tailwind red-500 */
+        }
+        .animate-pulse-green {
+            animation: pulse-green 1.5s infinite;
+        }
+        .animate-pulse-red {
+            animation: pulse-red 1.5s infinite;
+        }
     </style>
 </head>
 <body class="flex items-center justify-center min-h-screen p-4">
     <div class="bg-white p-8 rounded-xl shadow-lg text-center max-w-md w-full">
         <h1 class="text-4xl font-bold text-gray-800 mb-6">Water Level Monitor</h1>
+
+        <div id="connectionStatus" class="mb-4 px-4 py-2 rounded-full text-white font-semibold text-sm inline-flex items-center justify-center">
+            <span class="w-2.5 h-2.5 rounded-full mr-2 bg-gray-400" id="statusDot"></span>
+            <span id="statusText">Checking connection...</span>
+        </div>
 
         <div class="mb-8 p-6 bg-blue-100 rounded-lg shadow-inner">
             <p class="text-lg text-gray-600 mb-2">Current Water Level:</p>
@@ -28,36 +48,88 @@
         <p class="text-sm text-gray-500">
             This page automatically updates the water level received from your NodeMCU device.
         </p>
+        <p class="text-sm text-gray-500">
+            By - Abhijeet Mishra
+        </p>
     </div>
 
     <script>
-        // Function to fetch and update the water level
+        // Define a threshold for considering the NodeMCU disconnected (e.g., 15 seconds without an update)
+        const DISCONNECT_THRESHOLD_SECONDS = 15;
+
+        // Function to fetch and update the water level and connection status
         async function fetchWaterLevel() {
             try {
                 // Fetch data from the Flask endpoint
                 const response = await fetch('/get_waterlevel');
                 const data = await response.json();
 
-                // Update the display element
+                // Get display elements
                 const waterLevelDisplay = document.getElementById('waterLevelDisplay');
                 const lastUpdatedDisplay = document.getElementById('lastUpdated');
+                const connectionStatusDiv = document.getElementById('connectionStatus');
+                const statusDot = document.getElementById('statusDot');
+                const statusText = document.getElementById('statusText');
 
+                // Update water level display
                 if (data.water_level !== undefined) {
                     waterLevelDisplay.textContent = data.water_level;
-                    lastUpdatedDisplay.textContent = new Date().toLocaleTimeString();
-                    waterLevelDisplay.classList.remove('animate-pulse'); // Stop pulse once data is loaded
-                    waterLevelDisplay.classList.add('text-blue-700'); // Change color slightly
+                    waterLevelDisplay.classList.remove('animate-pulse');
+                    waterLevelDisplay.classList.add('text-blue-700');
                 } else {
                     waterLevelDisplay.textContent = "Error fetching data";
                     waterLevelDisplay.classList.remove('animate-pulse');
                     waterLevelDisplay.classList.add('text-red-500');
                 }
+
+                // Update connection status
+                const currentTime = Math.floor(Date.now() / 1000); // Current Unix timestamp in seconds
+                const lastReceived = data.last_received_timestamp;
+
+                if (lastReceived > 0) {
+                    lastUpdatedDisplay.textContent = new Date(lastReceived * 1000).toLocaleTimeString();
+                    const timeSinceLastUpdate = currentTime - lastReceived;
+
+                    // Clear previous status classes
+                    connectionStatusDiv.classList.remove('bg-green-400', 'bg-red-400', 'bg-gray-400', 'animate-pulse-green', 'animate-pulse-red');
+                    statusDot.classList.remove('bg-green-400', 'bg-red-400', 'bg-gray-400');
+
+                    if (timeSinceLastUpdate <= DISCONNECT_THRESHOLD_SECONDS) {
+                        connectionStatusDiv.classList.add('bg-green-400', 'animate-pulse-green');
+                        statusDot.classList.add('bg-green-400');
+                        statusText.textContent = "NodeMCU Connected";
+                    } else {
+                        connectionStatusDiv.classList.add('bg-red-400', 'animate-pulse-red');
+                        statusDot.classList.add('bg-red-400');
+                        statusText.textContent = "NodeMCU Disconnected";
+                    }
+                } else {
+                    // No data ever received
+                    lastUpdatedDisplay.textContent = "Never";
+                    connectionStatusDiv.classList.remove('bg-green-400', 'bg-red-400', 'animate-pulse-green', 'animate-pulse-red');
+                    connectionStatusDiv.classList.add('bg-gray-400');
+                    statusDot.classList.remove('bg-green-400', 'bg-red-400');
+                    statusDot.classList.add('bg-gray-400');
+                    statusText.textContent = "Waiting for data...";
+                }
+
             } catch (error) {
-                console.error('Error fetching water level:', error);
+                console.error('Error fetching water level or status:', error);
                 const waterLevelDisplay = document.getElementById('waterLevelDisplay');
+                const connectionStatusDiv = document.getElementById('connectionStatus');
+                const statusDot = document.getElementById('statusDot');
+                const statusText = document.getElementById('statusText');
+
                 waterLevelDisplay.textContent = "Connection Error";
                 waterLevelDisplay.classList.remove('animate-pulse');
                 waterLevelDisplay.classList.add('text-red-500');
+
+                // Indicate web server connection issue
+                connectionStatusDiv.classList.remove('bg-green-400', 'bg-red-400', 'animate-pulse-green', 'animate-pulse-red');
+                connectionStatusDiv.classList.add('bg-gray-400');
+                statusDot.classList.remove('bg-green-400', 'bg-red-400');
+                statusDot.classList.add('bg-gray-400');
+                statusText.textContent = "Web Server Error";
             }
         }
 
