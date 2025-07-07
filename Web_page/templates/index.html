@@ -30,6 +30,21 @@
         .water-fill {
             transition: opacity 0.5s ease-out; /* Smooth transition for water levels */
         }
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(1.05); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+        .animate-spin-slow {
+            animation: spin 3s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body class="flex items-center justify-center min-h-screen p-4">
@@ -59,6 +74,17 @@
         <p class="text-sm text-gray-500">
             This page automatically updates the water level received from your NodeMCU device.
         </p>
+        <div class="flex items-center justify-center space-x-2 text-sm">
+            <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center animate-spin-slow">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                </svg>
+            </div>
+            <div class="text-blue-500 flex flex-col items-center">
+                <span class="text-lg font-semibold">Abhijeet Mishra</span>
+                <span class="text-xs text-blue-400">A Geeky Nerd</span>
+            </div>
+        </div>
     </div>
 
     <script>
