@@ -1,30 +1,88 @@
-#include <ESP8266HTTPClient.h>
 #include <ESP8266WiFi.h>
-#include <WiFiClient.h>
-
-// --- Flask Server Details ---
-// IMPORTANT: Replace with the IP address of the computer running your Flask app.
-// You can find this by running 'ipconfig' (Windows) or 'ifconfig' (Linux/macOS)
-// in your computer's terminal. Look for your local IP address (e.g., 192.168.1.100).
-const char* flaskServerIp = "192.168.29.119";
-const int flaskServerPort = 5000; // Default Flask port
+#include <ESP8266HTTPClient.h>
+#include <WiFiClientSecure.h> // Required for HTTPS
 
 // --- WiFi Credentials ---
 // IMPORTANT: Replace with your actual WiFi SSID and password
-const char* ssid = "Mishras";
-const char* password = "Nopass@123";
+const char* ssid = ""; // wifi name
+const char* password = ""; //wifi pass
+
+// --- Server Details ---
+// IMPORTANT: Replace with the URL of your Google Cloud Run service
+// Example: "https://my-flask-app-xyz-uc.a.run.app"
+const char* serverUrl = ""; //replace with ur run app url
 
 // Define GPIO pins for float sensors
-const int SENSOR_PIN_25 = D1;   // GPIO5
-const int SENSOR_PIN_50 = D2;   // GPIO4
-const int SENSOR_PIN_75 = D5;   // GPIO14
-const int SENSOR_PIN_100 = D6;  // GPIO12
+const int SENSOR_PIN_25 = D1; // GPIO5
+const int SENSOR_PIN_50 = D2; // GPIO4
+const int SENSOR_PIN_75 = D5; // GPIO14
+const int SENSOR_PIN_100 = D6; // GPIO12
 
 // Update interval (milliseconds)
 const long UPDATE_INTERVAL = 10000;
 unsigned long previousMillis = 0;
-int waterLevel;
 
+// Function Prototypes
+void connectToWiFi();
+int getWaterLevel();
+void sendWaterLevelToWebpage(int waterLevel);
+void checkForResetCommand();
+
+void setup() {
+  Serial.begin(115200);
+  delay(100);
+
+  // Configure sensor pins with internal pull-up resistors
+  pinMode(SENSOR_PIN_25, INPUT_PULLUP);
+  pinMode(SENSOR_PIN_50, INPUT_PULLUP);
+  pinMode(SENSOR_PIN_75, INPUT_PULLUP);
+  pinMode(SENSOR_PIN_100, INPUT_PULLUP);
+
+  connectToWiFi();
+}
+
+void loop() {
+  connectToWiFi(); // Ensure WiFi is connected
+
+  unsigned long currentMillis = millis();
+  if (currentMillis - previousMillis >= UPDATE_INTERVAL) {
+    previousMillis = currentMillis;
+
+    int waterLevel = getWaterLevel();
+    Serial.printf("Current Water Level: %d%%\n", waterLevel);
+
+    sendWaterLevelToWebpage(waterLevel);
+    checkForResetCommand();
+  }
+  delay(1000);
+}
+
+// Function to connect to Wi-Fi
+void connectToWiFi() {
+  if (WiFi.status() == WL_CONNECTED) {
+    return;
+  }
+  Serial.print("Connecting to WiFi: ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, password);
+
+  int retries = 0;
+  while (WiFi.status() != WL_CONNECTED && retries < 20) {
+    delay(500);
+    Serial.print(".");
+    retries++;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nWiFi connected successfully!");
+    Serial.print("NodeMCU IP Address: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("\nFailed to connect to WiFi.");
+  }
+}
+
+// Function to get the current water level
 int getWaterLevel() {
   if (digitalRead(SENSOR_PIN_100) == LOW) return 100;
   if (digitalRead(SENSOR_PIN_75) == LOW) return 75;
@@ -33,141 +91,69 @@ int getWaterLevel() {
   return 0;
 }
 
-// In your NodeMCU sketch (e.g., in loop() or a dedicated function)
-
-// Function to connect to Wi-Fi
-void connectToWiFi() {
+// Function to send water level to the Cloud Run server
+void sendWaterLevelToWebpage(int waterLevel) {
   if (WiFi.status() == WL_CONNECTED) {
-    return; // Already connected
-  }
+    WiFiClientSecure wifiClient;
+    HTTPClient http;
 
-  Serial.print("Connecting to WiFi: ");
-  Serial.println(ssid);
+    // This is needed for HTTPS connections to cloud services from ESP8266
+    // It skips certificate validation. For production, consider certificate pinning.
+    wifiClient.setInsecure();
 
-  WiFi.begin(ssid, password);
+    // Construct the full URL for the request
+    String fullUrl = String(serverUrl) + "/update_waterlevel?level=" + String(waterLevel);
+    Serial.print("Sending request to: ");
+    Serial.println(fullUrl);
 
-  int retries = 0;
-  while (WiFi.status() != WL_CONNECTED && retries < 20) { // Try for 10 seconds (20 * 500ms)
-    delay(500);
-    Serial.print(".");
-    retries++;
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nWiFi connected!");
-    Serial.printf("%s",ssid);
-    Serial.print("NodeMCU IP Address: ");
-    Serial.println(WiFi.localIP());
+    if (http.begin(wifiClient, fullUrl)) {
+      int httpCode = http.GET();
+      if (httpCode > 0) {
+        Serial.printf("[HTTPS] GET... response code: %d\n", httpCode);
+        if (httpCode == HTTP_CODE_OK) {
+          String payload = http.getString();
+          Serial.println("Server response: " + payload);
+        }
+      } else {
+        Serial.printf("[HTTPS] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+      }
+      http.end();
+    } else {
+      Serial.println("[HTTPS] Unable to connect");
+    }
   } else {
-    Serial.println("\nFailed to connect to WiFi. Please check credentials and try again.");
+    Serial.println("Cannot send data: WiFi is not connected.");
   }
 }
 
-// Add this function to check for reset command
+// Function to check for a reset command from the Cloud Run server
 void checkForResetCommand() {
   if (WiFi.status() == WL_CONNECTED) {
+    WiFiClientSecure wifiClient;
     HTTPClient http;
-    String url = "http://";
-    url += flaskServerIp;
-    url += ":";
-    url += flaskServerPort;
-    url += "/get_nodemcu_command"; // New endpoint for NodeMCU to poll
 
-    WiFiClient wifiClient;
+    wifiClient.setInsecure();
 
-    http.begin(wifiClient,url);
-    int httpCode = http.GET();
+    String fullUrl = String(serverUrl) + "/get_nodemcu_command";
+    Serial.print("Checking for commands from: ");
+    Serial.println(fullUrl);
 
-    if (httpCode > 0) {
+    if (http.begin(wifiClient, fullUrl)) {
+      int httpCode = http.GET();
       if (httpCode == HTTP_CODE_OK) {
         String payload = http.getString();
-        // Parse the JSON response, e.g., {"reset": true} or {"reset": false}
-        // You might need a JSON parsing library like ArduinoJson for robust parsing
-        // For simplicity, we'll do a basic string check here.
+        Serial.println("Command response: " + payload);
         if (payload.indexOf("\"reset\":true") != -1) {
-          Serial.println("Received RESET command from server! Restarting NodeMCU...");
-          delay(1000); // Give some time for serial output
-          ESP.restart(); // This function restarts the ESP8266
+          Serial.println("RESET command received! Restarting NodeMCU...");
+          delay(1000);
+          ESP.restart();
         }
+      } else {
+        Serial.printf("[HTTPS] Command check failed, error: %s\n", http.errorToString(httpCode).c_str());
       }
+      http.end();
     } else {
-      Serial.printf("[HTTP] GET /get_nodemcu_command failed, error: %s\n", http.errorToString(httpCode).c_str());
-      Serial.printf("%d",httpCode);
+      Serial.println("[HTTPS] Unable to connect for command check");
     }
-    http.end();
   }
-}
-
-
-// Function to send water level to the Flask server
-void sendWaterLevelToWebpage(int waterLevel) {
-
-  if (WiFi.status() == WL_CONNECTED) {
-    HTTPClient http;
-
-    // Construct the URL with the water level as a query parameter
-    String url = "http://";
-    url += flaskServerIp;
-    url += ":";
-    url += flaskServerPort;
-    url += "/update_waterlevel?level=";
-    url += String(waterLevel); // Convert int waterLevel to String
-
-    Serial.print("Sending water level: ");
-    Serial.println(url);
-
-    WiFiClient wifiClient;
-
-    http.begin(wifiClient, url); // Specify the URL
-
-    // Send the GET request
-    int httpCode = http.GET();
-
-    // httpCode will be negative on error
-    if (httpCode > 0) {
-      // HTTP header has been send and server response header has been handled
-      Serial.printf("[HTTP] GET... code: %d\n", httpCode);
-
-      // file found at server
-      if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
-        String payload = http.getString();
-        Serial.println(payload);
-      }
-    } else {
-      Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
-    }
-
-    http.end(); // Free resources
-  } else {
-    Serial.println("Cannot send data: WiFi not connected.");
-  }
-}
-
-void setup() {
-  Serial.begin(115200);
-  delay(100);
-  connectToWiFi();
-  
-  // Configure sensor pins
-  pinMode(SENSOR_PIN_25, INPUT_PULLUP);
-  pinMode(SENSOR_PIN_50, INPUT_PULLUP);
-  pinMode(SENSOR_PIN_75, INPUT_PULLUP);
-  pinMode(SENSOR_PIN_100, INPUT_PULLUP);
-  
-}
-
-void loop() {
-
-  
-  unsigned long currentMillis = millis();
-  if (currentMillis - previousMillis >= UPDATE_INTERVAL) {
-    previousMillis = currentMillis;
-    
-    // Update cloud variable
-    waterLevel = getWaterLevel();
-    Serial.printf("Water level: %d%%\n", waterLevel);
-    sendWaterLevelToWebpage(waterLevel);
-    
-  }  
-  delay(2000);  
 }
