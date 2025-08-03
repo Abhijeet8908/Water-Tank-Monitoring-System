@@ -123,4 +123,4 @@ if __name__ == '__main__':
     print("Visit http://127.0.0.1:5000/ in your browser for the water level monitor.")
     print("Visit http://127.0.0.1:5000/admin for the admin panel.")
     print("NodeMCU should send GET requests to http://YOUR_FLASK_SERVER_IP:5000/update_waterlevel?level=YOUR_WATER_LEVEL")
-    app.run(host='192.168.29.119', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
